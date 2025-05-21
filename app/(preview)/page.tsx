@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { experimental_useObject } from "ai/react";
-import { questionsSchema } from "@/lib/schemas";
 import { z } from "zod";
+import { questionsSchema } from "@/lib/schemas";
 import { toast } from "sonner";
 import { FileUp, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,59 +14,42 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import Quiz from "@/components/quiz";
 import { Link } from "@/components/ui/link";
 import NextLink from "next/link";
 import { generateQuizTitle } from "./actions";
 import { AnimatePresence, motion } from "framer-motion";
 import { VercelIcon, GitIcon } from "@/components/icons";
+import { useRouter } from "next/navigation";
 
 export default function ChatWithFiles() {
   const [files, setFiles] = useState<File[]>([]);
   const [questions, setQuestions] = useState<z.infer<typeof questionsSchema>>(
-    [],
+    []
   );
   const [isDragging, setIsDragging] = useState(false);
   const [title, setTitle] = useState<string>();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const {
-    submit,
-    object: partialQuestions,
-    isLoading,
-  } = experimental_useObject({
-    api: "/api/generate-quiz",
-    schema: questionsSchema,
-    initialValue: undefined,
-    onError: (error) => {
-      toast.error("Failed to generate quiz. Please try again.");
-      setFiles([]);
-    },
-    onFinish: ({ object }) => {
-      setQuestions(object ?? []);
-    },
-  });
+  const router = useRouter();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
     if (isSafari && isDragging) {
       toast.error(
-        "Safari does not support drag & drop. Please use the file picker.",
+        "Safari does not support drag & drop. Please use the file picker."
       );
       return;
     }
 
     const selectedFiles = Array.from(e.target.files || []);
     const validFiles = selectedFiles.filter(
-      (file) => file.type === "application/pdf" && file.size <= 5 * 1024 * 1024,
+      (file) => file.type === "application/pdf" && file.size <= 5 * 1024 * 1024
     );
-    console.log(validFiles);
-
     if (validFiles.length !== selectedFiles.length) {
       toast.error("Only PDF files under 5MB are allowed.");
     }
-
     setFiles(validFiles);
   };
 
@@ -82,16 +64,33 @@ export default function ChatWithFiles() {
 
   const handleSubmitWithFiles = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const encodedFiles = await Promise.all(
-      files.map(async (file) => ({
-        name: file.name,
-        type: file.type,
-        data: await encodeFileAsBase64(file),
-      })),
-    );
-    submit({ files: encodedFiles });
-    const generatedTitle = await generateQuizTitle(encodedFiles[0].name);
-    setTitle(generatedTitle);
+    setIsLoading(true);
+    try {
+      const encodedFiles = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          data: await encodeFileAsBase64(file),
+        }))
+      );
+      const res = await fetch("/api/generate-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files: encodedFiles }),
+      });
+      if (!res.ok) throw new Error("Failed to generate quiz");
+      const data = await res.json();
+      const parsed = questionsSchema.safeParse(data);
+      if (!parsed.success) throw new Error("Invalid quiz format");
+      setQuestions(parsed.data);
+      const generatedTitle = await generateQuizTitle(encodedFiles[0].name);
+      setTitle(generatedTitle);
+    } catch (err) {
+      toast.error("Failed to generate quiz. Please try again.");
+      setFiles([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const clearPDF = () => {
@@ -99,7 +98,18 @@ export default function ChatWithFiles() {
     setQuestions([]);
   };
 
-  const progress = partialQuestions ? (partialQuestions.length / 4) * 100 : 0;
+  const handleChat = async () => {
+    setIsLoading(true);
+    const encodedFiles = await Promise.all(
+      files.map(async (file) => ({
+        name: file.name,
+        type: file.type,
+        data: await encodeFileAsBase64(file),
+      }))
+    );
+    localStorage.setItem("pdfFiles", JSON.stringify(encodedFiles));
+    router.push("/chat");
+  };
 
   if (questions.length === 4) {
     return (
@@ -120,7 +130,6 @@ export default function ChatWithFiles() {
       onDrop={(e) => {
         e.preventDefault();
         setIsDragging(false);
-        console.log(e.dataTransfer.files);
         handleFileChange({
           target: { files: e.dataTransfer.files },
         } as React.ChangeEvent<HTMLInputElement>);
@@ -189,9 +198,24 @@ export default function ChatWithFiles() {
               </p>
             </div>
             <Button
+              type="button"
+              className="w-full"
+              onClick={handleChat}
+              disabled={files.length === 0}
+            >
+              {isLoading ? (
+                <span className="flex items-center space-x-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Initializing Chat...</span>
+                </span>
+              ) : (
+                "Summarize / Ask Questions"
+              )}
+            </Button>
+            <Button
               type="submit"
               className="w-full"
-              disabled={files.length === 0}
+              disabled={files.length === 0 || isLoading}
             >
               {isLoading ? (
                 <span className="flex items-center space-x-2">
@@ -204,31 +228,6 @@ export default function ChatWithFiles() {
             </Button>
           </form>
         </CardContent>
-        {isLoading && (
-          <CardFooter className="flex flex-col space-y-4">
-            <div className="w-full space-y-1">
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Progress</span>
-                <span>{Math.round(progress)}%</span>
-              </div>
-              <Progress value={progress} className="h-2" />
-            </div>
-            <div className="w-full space-y-2">
-              <div className="grid grid-cols-6 sm:grid-cols-4 items-center space-x-2 text-sm">
-                <div
-                  className={`h-2 w-2 rounded-full ${
-                    isLoading ? "bg-yellow-500/50 animate-pulse" : "bg-muted"
-                  }`}
-                />
-                <span className="text-muted-foreground text-center col-span-4 sm:col-span-2">
-                  {partialQuestions
-                    ? `Generating question ${partialQuestions.length + 1} of 4`
-                    : "Analyzing PDF content"}
-                </span>
-              </div>
-            </div>
-          </CardFooter>
-        )}
       </Card>
       <motion.div
         className="flex flex-row gap-4 items-center justify-between fixed bottom-6 text-xs "

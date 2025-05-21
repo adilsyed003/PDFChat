@@ -5,10 +5,12 @@ import { streamObject } from "ai";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
+  console.log("API /api/generate-quiz called");
   const { files } = await req.json();
   const firstFile = files[0].data;
 
-  const result = streamObject({
+  // Get the result as a plain object (not a stream)
+  const result = await streamObject({
     model: google("gemini-1.5-pro-latest"),
     messages: [
       {
@@ -31,15 +33,14 @@ export async function POST(req: Request) {
         ],
       },
     ],
-    schema: questionSchema,
+    schema: questionsSchema,
     output: "array",
-    onFinish: ({ object }) => {
-      const res = questionsSchema.safeParse(object);
-      if (res.error) {
-        throw new Error(res.error.errors.map((e) => e.message).join("\n"));
-      }
-    },
   });
 
-  return result.toTextStreamResponse();
+  return new Response(JSON.stringify(result), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache, no-transform",
+    },
+  });
 }
