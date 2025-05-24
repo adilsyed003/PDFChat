@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { z } from "zod";
-import { questionsSchema } from "@/lib/schemas";
 import { toast } from "sonner";
 import { FileUp, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";

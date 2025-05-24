@@ -5,7 +5,6 @@ export const maxDuration = 60;
 const GEMINI_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY!; // Set in .env.local
 
 export async function POST(req: Request) {
-  console.log("API /api/generate-quiz called");
   const { text } = await req.json();
 
   const prompt = `
@@ -28,7 +27,6 @@ Text Content: ${text}
       contents: prompt,
     });
     geminiText = response.text ?? "";
-    console.log("Gemini response:", geminiText);
   } catch (e) {
     console.error("Gemini API error:", e);
     return new Response(JSON.stringify([]), { status: 500 });

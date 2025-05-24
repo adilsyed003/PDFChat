@@ -36,8 +36,7 @@ Question: ${question} `
 
     const result = await chat.sendMessage(prompt);
     const responseText = await result.response.text();
-    console.log("Response from Gemini:", responseText);
-    // Update chat history with last 5 interactions
+
     chatHistory.push({ role: "user", parts: [{ text: prompt }] });
     chatHistory.push({ role: "model", parts: [{ text: responseText }] });
 
