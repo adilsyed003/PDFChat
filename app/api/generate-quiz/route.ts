@@ -1,46 +1,57 @@
-import { questionSchema, questionsSchema } from "@/lib/schemas";
-import { google } from "@ai-sdk/google";
-import { streamObject } from "ai";
+import { GoogleGenAI } from "@google/genai";
 
 export const maxDuration = 60;
 
+const GEMINI_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY!; // Set in .env.local
+
 export async function POST(req: Request) {
   console.log("API /api/generate-quiz called");
-  const { files } = await req.json();
-  const firstFile = files[0].data;
+  const { text } = await req.json();
 
-  // Get the result as a plain object (not a stream)
-  const result = await streamObject({
-    model: google("gemini-1.5-pro-latest"),
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a teacher. Your job is to take a document, and create a multiple choice test (with 4 questions) based on the content of the document. Each option should be roughly equal in length.",
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "Create a multiple choice test based on this document.",
-          },
-          {
-            type: "file",
-            data: firstFile,
-            mimeType: "application/pdf",
-          },
-        ],
-      },
-    ],
-    schema: questionsSchema,
-    output: "array",
-  });
+  const prompt = `
+You are a teacher. Read the following text and create a multiple choice test with 4 questions based on its content.
+Each question should be an object with:
+- "question": string,
+- "options": array of 4 strings,
+- "answer": "A", "B", "C", or "D" (the correct option).
+Return a JSON array of 4 such objects, and nothing else.
 
-  return new Response(JSON.stringify(result), {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-cache, no-transform",
-    },
+Text Content: ${text}
+`;
+
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+  let geminiText = "";
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: prompt,
+    });
+    geminiText = response.text ?? "";
+    console.log("Gemini response:", geminiText);
+  } catch (e) {
+    console.error("Gemini API error:", e);
+    return new Response(JSON.stringify([]), { status: 500 });
+  }
+
+  let questions = [];
+  try {
+    let cleaned = geminiText.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/```$/, "");
+      // Remove any trailing triple backticks
+      cleaned = cleaned.replace(/```$/, "");
+    }
+    questions = JSON.parse(cleaned);
+  } catch (e) {
+    console.error("Failed to parse Gemini response as JSON:", geminiText);
+    return new Response(JSON.stringify([]), { status: 500 });
+  }
+
+  return new Response(JSON.stringify(questions), {
+    headers: { "Content-Type": "application/json" },
   });
 }
