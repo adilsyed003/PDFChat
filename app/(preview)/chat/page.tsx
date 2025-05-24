@@ -46,7 +46,10 @@ export default function ChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input }), // Only send the input text
+        body: JSON.stringify({
+          question: input,
+          pdfText: localStorage.getItem("pdfFiles") || "",
+        }), // Only send the input text
       });
 
       const data = await res.json();
