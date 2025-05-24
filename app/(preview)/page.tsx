@@ -21,15 +21,20 @@ import { generateQuizTitle } from "./actions";
 import { AnimatePresence, motion } from "framer-motion";
 import { VercelIcon, GitIcon } from "@/components/icons";
 import { useRouter } from "next/navigation";
+import { pdfToText } from "pdf-ts";
+type Question = {
+  question: string;
+  options: string[];
+  answer: "A" | "B" | "C" | "D";
+};
 
 export default function ChatWithFiles() {
   const [files, setFiles] = useState<File[]>([]);
-  const [questions, setQuestions] = useState<z.infer<typeof questionsSchema>>(
-    []
-  );
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [title, setTitle] = useState<string>();
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const router = useRouter();
 
@@ -53,41 +58,53 @@ export default function ChatWithFiles() {
     setFiles(validFiles);
   };
 
-  const encodeFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
+  // const encodeFileAsBase64 = async (file: File): Promise<string> => {
+  //   console.log("Encoding file:", file.name);
+
+  //   const pdf = await fs.readFile(files);
+  //   const text = await pdfToText(pdf);
+  //   console.log(text);
+  //   return new Promise((resolve, reject) => {
+  //     const reader = new FileReader();
+  //     reader.readAsDataURL(file);
+  //     reader.onload = () => resolve(reader.result as string);
+  //     reader.onerror = (error) => reject(error);
+  //   });
+  // };
+
+  const extractTextFromPDF = async (
+    file: File,
+    maxChars = 2000
+  ): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let text = await pdfToText(uint8Array);
+    return text.slice(0, maxChars);
   };
 
   const handleSubmitWithFiles = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
+    setQuestions([]);
     try {
-      const encodedFiles = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name,
-          type: file.type,
-          data: await encodeFileAsBase64(file),
-        }))
-      );
+      if (files.length === 0) throw new Error("No file selected");
+      // Extract text from the first PDF file
+      const extractedText = await extractTextFromPDF(files[0]);
       const res = await fetch("/api/generate-quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: encodedFiles }),
+        body: JSON.stringify({ text: extractedText }),
       });
       if (!res.ok) throw new Error("Failed to generate quiz");
       const data = await res.json();
-      const parsed = questionsSchema.safeParse(data);
-      if (!parsed.success) throw new Error("Invalid quiz format");
-      setQuestions(parsed.data);
-      const generatedTitle = await generateQuizTitle(encodedFiles[0].name);
-      setTitle(generatedTitle);
-    } catch (err) {
-      toast.error("Failed to generate quiz. Please try again.");
-      setFiles([]);
+      if (!Array.isArray(data) || data.length !== 4) {
+        throw new Error("Quiz format error");
+      }
+      setQuestions(data);
+      setTitle(files[0].name);
+    } catch (err: any) {
+      setError(err.message || "Unknown error");
     } finally {
       setIsLoading(false);
     }
@@ -104,7 +121,7 @@ export default function ChatWithFiles() {
       files.map(async (file) => ({
         name: file.name,
         type: file.type,
-        data: await encodeFileAsBase64(file),
+        data: await extractTextFromPDF(file),
       }))
     );
     localStorage.setItem("pdfFiles", JSON.stringify(encodedFiles));
@@ -228,6 +245,7 @@ export default function ChatWithFiles() {
             </Button>
           </form>
         </CardContent>
+        {error && <div className="text-red-600 mt-4 text-center">{error}</div>}
       </Card>
       <motion.div
         className="flex flex-row gap-4 items-center justify-between fixed bottom-6 text-xs "
