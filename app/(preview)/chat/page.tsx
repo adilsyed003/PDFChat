@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
+import Link from "next/link";
 
 type Message = {
   id: string;
@@ -80,12 +81,12 @@ export default function ChatPage() {
       {/* Navbar */}
       <nav className="w-full bg-black border-b border-white/20 py-4">
         <div className="max-w-3xl mx-auto px-4 flex items-center">
-          <a
+          <Link
             href="/"
             className="mr-4 cursor-pointer text-xl font-bold text-white tracking-wide"
           >
             Chat with PDF
-          </a>
+          </Link>
         </div>
       </nav>
       <div className="flex-1 overflow-y-auto">

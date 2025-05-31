@@ -4,7 +4,6 @@ import { NextRequest } from "next/server";
 const GEMINI_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY!;
 const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// In-memory context store (replace with DB for production)
 let chatHistory: { role: "user" | "model"; parts: { text: string }[] }[] = [];
 
 export async function POST(req: NextRequest) {
@@ -16,7 +15,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Compose the prompt with PDF content if provided
     const prompt = pdfText
       ? `You are an AI assistant. Your job is to take the text input and answer the question based on the content of the text.
 Answer it in a light and in less number of words.
